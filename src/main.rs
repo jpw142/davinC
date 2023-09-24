@@ -4,6 +4,12 @@ use image::{DynamicImage, ImageError, Rgb};
 #[derive(Debug, PartialEq, Clone, Copy)]
 struct Point{x: usize, y: usize}
 
+impl Point {
+    fn zero() -> Self {
+        return Point{x: 0, y: 0}
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 struct Color {
     r: u8,
@@ -27,7 +33,7 @@ struct Glyph {
     l_right: Point,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Image {
     pixels: Vec<Pixel>,
     width: usize,
@@ -42,7 +48,7 @@ fn gather_glyphs(image: Image, we_care: Vec<Color>) -> Vec<Glyph> {
     // (Foor flood fill algorithm)
     let mut visited = vec![false; image.pixels.len()];
 
-    for pixel in image.pixels {
+    for pixel in image.pixels.iter() {
         // This is if the pixel is in our we_care color list
         let mut is_pixel_important = false;
 
@@ -57,23 +63,34 @@ fn gather_glyphs(image: Image, we_care: Vec<Color>) -> Vec<Glyph> {
 
             let connected_pixels: Vec<Pixel> = vec![];
 
+            let glyph = Glyph { color: pixel.color, pixels: vec![], u_left: Point::zero(), l_right: Point::zero()};           
+            flood_fill(&image, glyph, &mut visited, pixel.color, pixel.point);
+
         }
     
     }
     return vec![];
 }
 
-fn flood_fill(image: Image, mut glyph: Glyph, mut visited_list: Vec<bool>, color: Color, pos: Point) -> Glyph {
+fn flood_fill(image: &Image, mut glyph: Glyph,mut visited: &mut Vec<bool>, color: Color, pos: Point) -> Glyph {
     let index = get_index(pos, image.width);
-    if visited_list[index] == true {
+    if visited[index] == true {
+        print!("pooop");
         return glyph; 
     }
     if image.pixels[index].color != color {
         return glyph;
     }
     glyph.pixels.push(image.pixels[index]);
-    visited_list[index] = true;
-    flood_fill(image, glyph, visited_list, color, pos)
+    visited[index] = true;
+    glyph = flood_fill(image, glyph,&mut visited, color, Point{x: pos.x + 1, y: pos.y});
+    glyph = flood_fill(image, glyph,&mut visited, color, Point{x: pos.x + 1, y: pos.y + 1});
+    glyph = flood_fill(image, glyph,&mut visited, color, Point{x: pos.x + 1, y: pos.y - 1});
+    glyph = flood_fill(image, glyph,&mut visited, color, Point{x: pos.x, y: pos.y + 1});
+    glyph = flood_fill(image, glyph,&mut visited, color, Point{x: pos.x, y: pos.y - 1});
+    glyph = flood_fill(image, glyph,&mut visited, color, Point{x: pos.x - 1, y: pos.y + 1});
+    glyph = flood_fill(image, glyph,&mut visited, color, Point{x: pos.x - 1, y: pos.y});
+    glyph = flood_fill(image, glyph,&mut visited, color, Point{x: pos.x - 1, y: pos.y - 1});
     return glyph;
 }
 
@@ -117,7 +134,8 @@ fn main() {
         let color = Color { r: data[c3], g: data[c3 + 1], b: data[c3 + 2]}; 
         image.pixels.push(Pixel{color, point});
     }
-    print!("{:?}", image);
 
     let mut used_colors: Vec<Color> = vec![Color{r: 255, b: 0, g: 0}, Color{r: 0, b: 255, g: 0}, Color{r: 0, b: 0, g: 255}];
+
+    print!("{:?}", gather_glyphs(image, used_colors));
 }
