@@ -1,0 +1,44 @@
+Functions I need to implement for a language that I can do whatever I want with
+
+4 Steps:
+Glyph Detection -> Recognize connected pixel clumps from the picture
+Tokenizer -> Turn glyphs into recognized tokens
+Parser -> Connect tokens together
+Code Generation -> Generate assembly based on parse tree
+
+Read File
+Write File
+
+Add
+Subtract
+Multiply
+Divide
+Modulus
+
+Greater Than
+Less Than
+Equal To
+
+Define Function
+Define Variable
+Define Struct
+Ascertain the type of a value
+
+Print
+
+Or
+And
+Not
+
+For Loop
+While Loop
+
+Return
+Panic
+DirectionGate -> Locks the direction of the green to only go to 1 direction
+
+Data Types:
+Number
+Char
+Picture
+
