@@ -21,7 +21,7 @@ pub struct Pixel {
     color: Color,
     point: Point,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// A group of connected pixels to be identified
 /// Bounding box is the upper left and the lowest right
 pub struct Glyph {
@@ -31,6 +31,12 @@ pub struct Glyph {
     l_right: Point,
 }
 
+#[derive(Debug)]
+pub struct IdentifiedGlyph{
+    glyph: Glyph,
+    pub identifier: Glyphies,
+}
+
 #[derive(Debug, Clone)]
 pub struct Image {
     pixels: Vec<Pixel>,
@@ -38,6 +44,64 @@ pub struct Image {
     height: usize,
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum Glyphies {
+    Dir,
+    Add,
+    Mul,
+    Div,
+    Sub,
+    Assign,
+    ERRRORRORORR,
+}
+
+
+const BUILTIN_FILE_NAMES: [&str; 5] = [
+    "symbols/dir.png",
+    "symbols/add.png",
+    "symbols/mul.png",
+    "symbols/sub.png",
+    "symbols/div.png",
+];
+
+
+pub fn identify_glyphs(identified: Vec<IdentifiedGlyph>, to_identify: Vec<Glyph>) -> Vec<IdentifiedGlyph> {
+    let mut identified_glyphs = vec![];
+    for ident in identified.iter() {
+        for to_ident in to_identify.iter() {
+            if ident.glyph.color != to_ident.color {
+                continue;
+            }
+            if ident.glyph.pixels.len() != to_ident.pixels.len() {
+                continue;
+            }
+            if !ident.glyph.pixels.iter().all(|item| to_ident.pixels.contains(item)) {
+                continue
+            }
+            identified_glyphs.push(IdentifiedGlyph{glyph: to_ident.clone(), identifier: ident.identifier.clone()});
+        }
+    }
+    return identified_glyphs
+}
+
+pub fn load_builtin_glyphs() -> Vec<IdentifiedGlyph> {
+    let mut vec_glyphs = vec![];
+    for path in BUILTIN_FILE_NAMES {
+        let image = open_image(path);
+        let glyphs = gather_glyphs(image, vec![Color{r: 0, g: 0, b: 255}]);
+        assert!(glyphs.len() == 1);
+        let identifier = match path {
+            "symbols/dir.png" => Glyphies::Dir,
+            "symbols/add.png" => Glyphies::Add,
+            "symbols/mul.png" => Glyphies::Mul,
+            "symbols/div.png" => Glyphies::Div,
+            "symbols/sub.png" => Glyphies::Sub,
+            _ => Glyphies::ERRRORRORORR,
+        };
+        vec_glyphs.push(IdentifiedGlyph{glyph: glyphs[0].clone(), identifier})
+    }
+    return vec_glyphs;
+}
 
 /// Gathers every group of connected pixels with the same colors
 /// Only gathers groups of colors we care about
@@ -87,13 +151,10 @@ pub fn gather_glyphs(image: Image, we_care: Vec<Color>) -> Vec<Glyph> {
                 }
                 glyph_list.push(glyph);
             }
-
         }
-    
     }
     return glyph_list;
 }
-
 
 const SURROUNDING: [(i32, i32); 8] = [
     (-1, -1),
@@ -105,6 +166,7 @@ const SURROUNDING: [(i32, i32); 8] = [
     (-1, 1),
     (-1, 0),
 ];
+
 fn flood_fill(image: &Image, mut glyph: Glyph, visited: &mut Vec<bool>, pixel: Pixel) -> Glyph {
     // List of pixels we need to address
     let mut queue: Vec<Pixel> = vec![];
