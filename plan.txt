@@ -6,6 +6,31 @@ Tokenizer -> Turn glyphs into recognized tokens
 Parser -> Connect tokens together
 Code Generation -> Generate assembly based on parse tree
 
+Glyph Detection:
+[X] Find groups of colors that are important and group them together
+[ ] Load in the builtin functions
+[ ] Identify which builtin function those colors match, if any
+[ ]Find the inputs, outputs, and flow of those identified glyphs from the information provided from the builtin functions
+[ ] Find all of the variable definitions in the flow of the program
+[ ] Find other function definitions and link them to their corresponding code 
+[ ] Look for those in the picture
+[ ] do the same for type definitions?
+[ ] Link all of the tokens together
+
+Blue 255 = Function
+Green 255 = Program Flow
+Red 0-255 = Definition of numbers
+Cyan (Green 255, Blue 255) = Float
+Yellow (Red 255, Green 255)= Picture
+Purple (Red 255, Blue 255) = Char
+
+Define a function by:
+Drawing a yellow box (Picture) with the definiton inside
+Dir from the yellow box (Picture) to the color of the function
+If there is no color the function is assumed to be Blue
+How do I show what inputs are??
+
+
 Read File
 Write File
 

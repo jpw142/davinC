@@ -1,4 +1,20 @@
 use image::io::Reader;
+
+// To get all my functions:
+// Find all my dirs
+// Parse the function for its symbol and its inputs
+// By this point we have all of the symbols for all of the functions
+// Now we find all the dir signs, find al the functions associated with them
+// the inputs will all be behind the dir until the picture and the outputs in front of it until the green
+// If all of the colors are not present in the function, error
+// find the start function this way by finding the dir with green only in front of it
+// build the sequence of functions for it in an abstract syntax tree
+// outputs have to have green on them
+//
+//// fill till you hit an un
+
+
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Point{x: usize, y: usize}
 
@@ -16,6 +32,10 @@ pub struct Color {
     pub b: u8,
 }
 
+const RED: Color = Color{r: 255, g: 0, b: 0};
+const GREEN: Color = Color{r: 0, g: 255, b: 0};
+const BLUE: Color = Color{r: 0, g: 0, b: 255};
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Pixel {
     color: Color,
@@ -31,10 +51,27 @@ pub struct Glyph {
     l_right: Point,
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+struct BoundingBox {
+    u_left: Point,
+    l_right: Point,
+}
+
 #[derive(Debug)]
 pub struct IdentifiedGlyph{
     glyph: Glyph,
     pub identifier: Glyphies,
+    input: Vec<Color>,
+    output: Vec<Color>,
+}
+
+#[derive(Debug)]
+pub struct DefinitionGlyph{
+    glyph: Glyph,
+    pub identifier: Glyphies,
+    inputs: Vec<(BoundingBox, Color)>,
+    outputs: Vec<(BoundingBox, Color)>,
+    flow: Vec<BoundingBox>,
 }
 
 #[derive(Debug, Clone)]
@@ -42,6 +79,11 @@ pub struct Image {
     pixels: Vec<Pixel>,
     width: usize,
     height: usize,
+}
+
+enum Axis {
+    X,
+    Y,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -84,12 +126,23 @@ pub fn identify_glyphs(identified: Vec<IdentifiedGlyph>, to_identify: Vec<Glyph>
     return identified_glyphs
 }
 
-pub fn load_builtin_glyphs() -> Vec<IdentifiedGlyph> {
+pub fn load_builtin_glyphs() -> Vec<DefinitionGlyph> {
     let mut vec_glyphs = vec![];
     for path in BUILTIN_FILE_NAMES {
         let image = open_image(path);
-        let glyphs = gather_glyphs(image, vec![Color{r: 0, g: 0, b: 255}]);
-        assert!(glyphs.len() == 1);
+        let glyphs = gather_glyphs(image, vec![BLUE, RED]);
+        let mut blues = vec![];
+        assert!(blues.len() == 1);
+        let mut greens = vec![];
+        for g in glyphs {
+            if g.color == BLUE {
+                blues.push(g);
+            }
+            else if g.color == GREEN {
+                greens.push(g);
+            }
+        }
+        // Get Identifier
         let identifier = match path {
             "symbols/dir.png" => Glyphies::Dir,
             "symbols/add.png" => Glyphies::Add,
@@ -98,9 +151,34 @@ pub fn load_builtin_glyphs() -> Vec<IdentifiedGlyph> {
             "symbols/sub.png" => Glyphies::Sub,
             _ => Glyphies::ERRRORRORORR,
         };
+        // Find all non-important colors
+        let colors = find_all_colors(&image);
+        for (i, color) in colors.iter_mut().enumerate() {
+            if *color == BLUE || *color == GREEN {
+                colors.remove(i);
+            }
+        }
+        // Find the output
+
+
+        
         vec_glyphs.push(IdentifiedGlyph{glyph: glyphs[0].clone(), identifier})
     }
     return vec_glyphs;
+}
+
+fn parse_function(i: Image, c: Color) {
+
+}
+
+fn find_all_colors(i: &Image) -> Vec<Color> {
+    let mut color_vec = vec![];
+    for pixel in i.pixels {
+        if !color_vec.contains(&pixel.color) {
+            color_vec.push(pixel.color);
+        }
+    }
+    return color_vec;
 }
 
 /// Gathers every group of connected pixels with the same colors
