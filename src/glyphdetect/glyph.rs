@@ -1,6 +1,6 @@
-use image::io::Reader;
-use core::ops::{Add, Sub}; 
-
+use crate::glyphdetect::picture::*;
+use crate::glyphdetect::point::*;
+use crate::glyphdetect::color::*;
 // To get all my functions:
 // Find all my dirs
 // Parse the function for its symbol and its inputs
@@ -14,56 +14,11 @@ use core::ops::{Add, Sub};
 //
 //// fill till you hit an un
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Point{x: i32, y: i32}
-
-impl Point {
-    fn zero() -> Self {
-        return Point{x: 0, y: 0}
-    }
-}
-impl Add for Point {
-    type Output = Self;
-    fn add(self, other: Self) -> Self {
-        Self{
-            x: self.x + other.x,
-            y: self.y + other.y,
-        }
-    }
-}
-impl Sub for Point {
-    type Output = Self;
-    fn sub(self, other: Self) -> Self {
-        Self {
-            x: self.x - other.y,
-            y: self.y - other.y,
-        }
-    }
-}
 
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub struct Color {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-}
-
-const RED: Color = Color{r: 255, g: 0, b: 0};
-const GREEN: Color = Color{r: 0, g: 255, b: 0};
-const BLUE: Color = Color{r: 0, g: 0, b: 255};
-const YELLOW: Color = Color{r: 255, g: 255, b: 0};
-const WHITE: Color = Color{r: 255, g: 255, b: 255};
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub struct Pixel {
-    color: Color,
-    point: Point,
-}
-
-#[derive(Debug, Clone)]
 /// A group of connected pixels to be identified
 /// Bounding box is the upper left and the lowest right
+#[derive(Debug, Clone)]
 pub struct Glyph {
     pub color: Color,
     pub pixels: Vec<Pixel>,
@@ -80,31 +35,18 @@ impl Glyph {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-struct BoundingBox {
-    u_left: Point,
-    l_right: Point,
-}
-impl Sub for BoundingBox {
-    type Output = Self;
-    fn sub(self, other: Self) -> Self {
-        Self {
-            u_left: self.u_left - other.u_left,
-            l_right: self.l_right - other.l_right,
-        }
-    }
-}
-
-
-
 #[derive(Debug)]
-pub struct IdentifiedGlyph{
+pub struct Identified{
     glyph: Glyph,
     pub identifier: Glyphies,
     input: Vec<Color>,
     output: Vec<Color>,
+    // flowin: i32
+    // flowout: i32
+    // These will be the id's in the identified vector of the flow
 }
 
+/// A definition of a function
 #[derive(Debug, Clone)]
 pub struct Definition{
     glyph: Glyph,
@@ -114,18 +56,20 @@ pub struct Definition{
     id: usize, // It's position in the definitions vector
 }
 
-#[derive(Debug, Clone)]
-pub struct Picture {
-    pixels: Vec<Pixel>,
-    width: i32,
-    height: i32,
-}
 
+enum Bounds {
+    xinf,
+    yinf,
+    x(i32),
+    y(i32),
+
+}
 enum Axis {
     X,
     Y,
 }
 
+/// Identifiers for definition glyphs, like a function name
 #[derive(Debug, Copy, Clone)]
 pub enum Glyphies {
     Dir,
@@ -134,28 +78,28 @@ pub enum Glyphies {
     Div,
     Sub,
     Assign,
+    CustomFunction,
     ERRRORRORORR,
 }
 
 
-const BUILTIN_FILE_NAMES: [&str; 1] = [
+const BUILTIN_FILE_NAMES: [&str; 4] = [
     "symbols/add.png",
-    // "symbols/mul.png",
-    // "symbols/sub.png",
-    // "symbols/div.png",
+    "symbols/mul.png",
+    "symbols/sub.png",
+    "symbols/div.png",
 ];
 
+
 /// Loads in the 'dir' symbol, needs special attention because it loads in every other symbol
-/// Returns a list because it's meant to be built off of
-pub fn load_dir() -> Vec<Definition> {
+/// Returns a list of definitions because it's meant to be built off of
+fn load_dir() -> Vec<Definition> {
     let path = "symbols/dir.png";
     let p = open_pic(path);
     let inc = Color{r: 127, g: 201, b: 255};
     let outc = Color{r: 127, g: 255, b: 142};
     let c = vec![BLUE, inc, outc];
-    println!("glyphs in load_dir");
-    let g = gather_glyphs(p, c);
-    println!("{:?}", g);
+    let g = gather_glyphs(&p, c);
     let mut dout: Glyph = Glyph::zero();
     let mut din: Glyph = Glyph::zero();
     let mut dg: Glyph = Glyph::zero();
@@ -170,8 +114,7 @@ pub fn load_dir() -> Vec<Definition> {
             dout = glyph;
         }
     }
-    let neg1 = Point{x: 1, y: 1};
-    let minus = BoundingBox {u_left: dg.b.u_left + neg1, l_right: dg.b.u_left+ neg1};
+    let minus = BoundingBox {u_left: dg.b.u_left, l_right: dg.b.u_left};
     let d = Definition{
         glyph: dg.clone(),
         identifier: Glyphies::Dir,
@@ -179,19 +122,13 @@ pub fn load_dir() -> Vec<Definition> {
         outputs: vec![(dout.b - minus, dout.color)],
         id: 0,
     };
-    println!("loading dir");
-    println!("{:?}", d);
-    println!("");
-    println!("");
-    println!("");
-    println!("");
-    println!("");
-    println!("");
-    println!("");
-    println!("");
     return vec![d];
 }
 
+/// Loads in the builtin definitions as they will never be included in the actual program so we
+/// have to do it special
+/// Also it is very hard to define their behavior so it's easier to do it once
+/// Returns a vector of definitions 
 pub fn load_builtin_definitions() -> Vec<Definition> {
     let mut definitions = load_dir();
     let dir = definitions[0].clone();
@@ -199,10 +136,12 @@ pub fn load_builtin_definitions() -> Vec<Definition> {
         let p = open_pic(path);
         let mut input_colors: Vec<Color> = vec![];
         let mut output_colors: Vec<Color> = vec![];
-        let glyphs = gather_glyphs(p.clone(), vec![]);
-
+        let glyphs = gather_glyphs(&p, vec![]);
+        // The dir that is in the picture
         let mut path_dir = Glyph::zero();
+        // The yellow picture definition box
         let mut yellow_box = Glyph::zero();
+        // The unidentified function that we are trying to define
         let mut unidentified_builtin = Glyph::zero();
         // Find Dir
         for g in glyphs.iter() {
@@ -218,22 +157,38 @@ pub fn load_builtin_definitions() -> Vec<Definition> {
             }
             // Checks all of the pixels are the same
             if !dir.glyph.pixels.iter().all(|item| g.pixels.contains(item)) {
-                unidentified_builtin = g.clone();
                 continue
             }
             path_dir = g.clone(); // By this point it must be dir
         }
-        // Find all the input colors
-        println!("{:?}", path_dir);
-        println!("{:?}", dir.inputs[0].0);
-        let mut i_in = path_dir.b.u_left + dir.inputs[0].0.u_left;
-        println!("{:?}", i_in);
+
+        // Find glyph
+        for g in glyphs.iter() {
+            if g.color == YELLOW {
+                continue;
+            }
+            // Assuming here that it's not the exact same length as dir
+            if g.pixels.len() == dir.glyph.pixels.len() {
+                continue;
+            }
+            if g.color != BLUE {
+                continue;
+            }
+            if dir.glyph.pixels.iter().all(|item| g.pixels.contains(item)) {
+                continue
+            }
+            unidentified_builtin = g.clone() // By this point it must be our builtin
+        }
+
+        // Find all the input colors (Left of dir)
+        // This is where the input would be relative to the picture coordinates
+        let mut i_in = path_dir.b.u_left + dir.inputs[0].0.u_left; 
+                                                                   
         loop {
             if i_in.x <= 0 {
                 break;
             }
             let looking = p.pixels[get_index(i_in, p.width)];
-            println!("{:?}", looking);
             // When we hit the picture break
             if looking.color == YELLOW {
                 break;
@@ -248,7 +203,9 @@ pub fn load_builtin_definitions() -> Vec<Definition> {
             input_colors.push(looking.color);
             i_in.x -= 1;
         }
-        // Find all the output Colors
+
+        // Find all the output Colors (Right of dir)
+        // This is where the output would be relative to the picture coordinates
         let mut i_out = path_dir.b.u_left + dir.outputs[0].0.u_left;
         loop {
             if i_out.x >= p.width {
@@ -270,7 +227,6 @@ pub fn load_builtin_definitions() -> Vec<Definition> {
             i_out.x += 1;
         }
         // All inputs and outputs will be inside the function
-        let function_bounds = yellow_box.b;
         // Find the positions of the input colors
         let identifier = match path {
             "symbols/add.png" => Glyphies::Add,
@@ -281,10 +237,13 @@ pub fn load_builtin_definitions() -> Vec<Definition> {
         };
         let mut builtin = Definition{glyph: unidentified_builtin, identifier, id: definitions.len(), inputs: vec![], outputs: vec![]};
         builtin.glyph.color = BLUE;
+        // what we have to minus to put the inputs and outputs in the frame of builtin coords
+        let minus = BoundingBox{u_left: builtin.glyph.b.u_left, l_right: builtin.glyph.b.u_left};
         for g in glyphs.iter() {
             if !input_colors.contains(&g.color) && !output_colors.contains(&g.color) {
                 continue
             }
+            // Makes sure these inputs are actually in the image
             if g.b.u_left.x < yellow_box.b.u_left.x || g.b.u_left.y < yellow_box.b.u_left.y {
                 continue;
             }
@@ -292,11 +251,11 @@ pub fn load_builtin_definitions() -> Vec<Definition> {
                 continue;
             }
             if input_colors.contains(&g.color) {
-                builtin.inputs.push((g.b, g.color));
+                builtin.inputs.push((g.b - minus, g.color));
                 continue;
             }
             if output_colors.contains(&g.color) {
-                builtin.outputs.push((g.b, g.color));
+                builtin.outputs.push((g.b - minus, g.color));
                 continue;
             }
         }
@@ -307,35 +266,30 @@ pub fn load_builtin_definitions() -> Vec<Definition> {
 
 }
 
-pub fn identify_glyphs(identified: Vec<IdentifiedGlyph>, to_identify: Vec<Glyph>) -> Vec<IdentifiedGlyph> {
-    let mut identified_glyphs = vec![];
-    for ident in identified.iter() {
-        for to_ident in to_identify.iter() {
-            if ident.glyph.color != to_ident.color {
-                continue;
-            }
-            if ident.glyph.pixels.len() != to_ident.pixels.len() {
-                continue;
-            }
-            if !ident.glyph.pixels.iter().all(|item| to_ident.pixels.contains(item)) {
-                continue
-            }
-            // identified_glyphs.push(IdentifiedGlyph{glyph: to_ident.clone(), identifier: ident.identifier.clone()});
-        }
-    }
-    return identified_glyphs
-}
+
+const SURROUNDING: [(i32, i32); 8] = [
+    (-1, -1),
+    (0, -1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
+    (0, 1),
+    (-1, 1),
+    (-1, 0),
+];
 
 /// Gathers every group of connected pixels with the same colors
 /// Only gathers groups of colors we care about
-pub fn gather_glyphs(image: Picture, we_care: Vec<Color>) -> Vec<Glyph> {
+/// If the vec of colors we care about is empty, collect every pixel that has a value other than
+/// white
+pub fn gather_glyphs(pic: &Picture, we_care: Vec<Color>) -> Vec<Glyph> {
     let mut glyph_list = vec![];
 
     // Creates a list to see if we have visited each pixel
-    // (Foor flood fill algorithm)
-    let mut visited = vec![false; image.pixels.len()];
+    // (For flood fill algorithm)
+    let mut visited = vec![false; pic.pixels.len()];
 
-    for pixel in image.pixels.iter() {
+    for pixel in pic.pixels.iter() {
         // This is if the pixel is in our we_care color list
         let mut is_pixel_important = false;
 
@@ -344,16 +298,24 @@ pub fn gather_glyphs(image: Picture, we_care: Vec<Color>) -> Vec<Glyph> {
                 is_pixel_important = true;
             }
         }
-        // If the pixel isn't important we do NOT CARE
+        // If the pixel isn't important we do NOT CARE, but if there is no way it could be
+        // important, then we have to give it a chance :3
         if !is_pixel_important && we_care.len() != 0 {
             continue;
         }
+    
+        if pixel.color == WHITE {
+            continue;
+        }
 
-        if !visited[get_index(pixel.point, image.width)] {
+        // If a pixel hasn't already been visited by the flood fill algorithm we will fill it
+        // But if it has it would only lead to duplications
+        if !visited[get_index(pixel.point, pic.width)] {
             let mut glyph = Glyph {color: pixel.color, pixels: vec![], b: BoundingBox{u_left: Point::zero(), l_right: Point::zero()}};           
-            glyph = flood_fill(&image, glyph, &mut visited, pixel.clone());
+            glyph = flood_fill(&pic, glyph, &mut visited, pixel.clone());
             let mut max = Point{x: 0, y: 0};
             let mut min = Point{x: i32::MAX, y: i32::MAX};
+            // Get the bounding box of the glyph (useful for other stuff)
             for pixel in glyph.pixels.iter() {
                 if pixel.point.x >= max.x {
                     max.x = pixel.point.x;
@@ -370,6 +332,9 @@ pub fn gather_glyphs(image: Picture, we_care: Vec<Color>) -> Vec<Glyph> {
             }
             glyph.b.u_left = min;
             glyph.b.l_right = max;
+            // Puts all of the pixels into the frame of the glyph coordinates, useful for
+            // comparisons, if we need positional we just use the bounding box, and if we ever for
+            // some reason need the real position back we can just add the bounding box back
             for pixel in glyph.pixels.iter_mut() {
                 pixel.point = Point{x: pixel.point.x - min.x, y: pixel.point.y - min.y};
             }
@@ -379,27 +344,20 @@ pub fn gather_glyphs(image: Picture, we_care: Vec<Color>) -> Vec<Glyph> {
     return glyph_list;
 }
 
-const SURROUNDING: [(i32, i32); 8] = [
-    (-1, -1),
-    (0, -1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-    (0, 1),
-    (-1, 1),
-    (-1, 0),
-];
-
-fn flood_fill(image: &Picture, mut glyph: Glyph, visited: &mut Vec<bool>, pixel: Pixel) -> Glyph {
+/// Returns a group of connected pixels (glyph) with the same color that are touching in any way
+/// Starts off with a seed pixel and then moves on from there 
+/// Visited is a list of bools the same size as the pic, stating if that pixel had already been
+/// visited by this function
+fn flood_fill(pic: &Picture, mut glyph: Glyph, visited: &mut Vec<bool>, pixel: Pixel) -> Glyph {
     // List of pixels we need to address
     let mut queue: Vec<Pixel> = vec![];
     // The current pixel we are looking around
     let mut selected_pixel = pixel;
     loop {
-        // if it's 
-        if visited[get_index(selected_pixel.point, image.width)] == false {
+        // if it's not visited already we will visit it
+        if visited[get_index(selected_pixel.point, pic.width)] == false {
             // Set the visited point to true, and add the pixel to the glyph
-            visited[get_index(selected_pixel.point, image.width)] = true;
+            visited[get_index(selected_pixel.point, pic.width)] = true;
             glyph.pixels.push(selected_pixel);
         }
         
@@ -409,23 +367,25 @@ fn flood_fill(image: &Picture, mut glyph: Glyph, visited: &mut Vec<bool>, pixel:
             let new_x = selected_pixel.point.x as i32 + off_x;
             let new_y = selected_pixel.point.y as i32 + off_y;
             // Guard statements about going out of bounds
-            if new_x < 0 || new_x >= image.width as i32 {
+            if new_x < 0 || new_x >= pic.width as i32 {
                 continue;
             }
-            if new_y < 0 || new_y >= image.height as i32 {
+            if new_y < 0 || new_y >= pic.height as i32 {
                 continue;
             }
+            // The point of the pixel surrounding it
             let new_point = Point{x: new_x as i32, y: new_y as i32};
-
-            if visited[get_index(new_point, image.width)] == true {
+            // If the surrounding pixel has already been visited we don't care about it
+            if visited[get_index(new_point, pic.width)] == true {
                 continue;
             }
-            let new_pixel = image.pixels[get_index(new_point, image.width)];
+            let new_pixel = pic.pixels[get_index(new_point, pic.width)];
             if new_pixel.color != pixel.color {
                 continue;
             }
             queue.push(new_pixel);
         }
+        // If we have no more pixels in the queue to look at we are done
         let opt_pixel = queue.pop();
         if opt_pixel.is_none() {
             return glyph;
@@ -436,40 +396,39 @@ fn flood_fill(image: &Picture, mut glyph: Glyph, visited: &mut Vec<bool>, pixel:
     }
 }
 
-/// Opens image and given the file path is correct, returns the image
-pub fn open_pic(path: &str) -> Picture {
-    let img = Reader::open(path).unwrap().decode().unwrap().to_rgb8();
 
-    let width = img.width();
-    let height = img.height();
-    let data: Vec<u8>= img.into_raw();
-
-    let mut ret_img: Picture = Picture{
-        pixels: vec![],
-        width: width as i32,
-        height: height as i32,
-    };
-
-    for c in 0..(height * width) {
-        let c3 = (c * 3) as usize;
-        let point = get_pos(c as i32, width as i32);
-        let color = Color { r: data[c3], g: data[c3 + 1], b: data[c3 + 2]}; 
-        ret_img.pixels.push(Pixel{color, point});
+/// Creates the definition when the dir is identified and the picture definition is found
+/// You could identify it in bounding boxes to solve the infinitley expanding principle
+/// Link the bounding boxes together with their surrounding bounding boxes
+pub fn create_definition(subpicture: &Picture, inputs: Vec<Color>, outputs: Vec<Color>) -> Definition {
+    let glyphs = gather_glyphs(subpicture, vec![]); 
+    // Find the function color
+    for g in glyphs.iter() {
+    
     }
-    return ret_img;
+    // Find the function glyph
+    // Find all the inputs and outputs
+    todo!()
 }
 
-/// Starts from the top left and goes down to the bottom right
-/// Returns (x,y)
-pub fn get_pos(index: i32, width: i32) -> Point {
-    let x = index % width; 
-    let y = index / width;
-    return Point{x: x as i32, y: y as i32};
+/// Checks to see if a glyph fits the definition
+/// Only checks against the pixels of the definition, not inputs or such
+pub fn fits_definition(definition: &Definition, glyph: &Glyph) -> bool {
+    // Checks the glyph fitsx
+    // Checks the inputs fit
+    // Checks the outputs fit
+    // Checks that all the infinitley expandable things are equal where they need to be
+    todo!();
 }
 
-/// Opposite of get_pos
-/// Takes in an x and y and returns the corresponding index
-pub fn get_index(point: Point, width: i32) -> usize {
-    return (point.y * width + point.x) as usize;
+
+pub enum IdentifyError {
+    MissingFlowIn,
+    MissingOutputFlow,
+    MissingInput,
+    MissingOutput,
 }
 
+pub fn identify(pic: &Picture, definition: &Definition, glyph: &Glyph) -> Result<Identified, IdentifyError> {
+    todo!()
+}

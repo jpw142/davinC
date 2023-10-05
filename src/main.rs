@@ -1,5 +1,5 @@
-mod glyph;
-use crate::glyph::*;
+mod glyphdetect;
+use crate::glyphdetect::glyph::*;
 
 
 fn main() {
