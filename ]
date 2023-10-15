@@ -254,15 +254,15 @@ pub fn load_builtin_definitions() -> Vec<Definition> {
 }
 
 
-const SURROUNDING: [Point; 8] = [
-    Point{x: 1, y: 0},
-    Point{x: 1, y: -1},
-    Point{x:0, y: -1},
-    Point{x: -1, y: -1},
-    Point{x: -1, y: 0},
-    Point{x: -1, y: 1},
-    Point{x: 0, y: 1},
-    Point{x: 1, y: 1},
+const SURROUNDING: [(i32, i32); 8] = [
+    (-1, -1),
+    (0, -1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
+    (0, 1),
+    (-1, 1),
+    (-1, 0),
 ];
 
 /// Gathers every group of connected pixels with the same colors
@@ -350,14 +350,18 @@ fn flood_fill(pic: &Picture, mut glyph: Glyph, visited: &mut Vec<bool>, pixel: P
         
         // Gather the SURROUNDING pixels
         for i in 0..8 {
-            let new_point = selected_pixel.point + SURROUNDING[i];
+            let (off_x, off_y) = SURROUNDING[i];
+            let new_x = selected_pixel.point.x as i32 + off_x;
+            let new_y = selected_pixel.point.y as i32 + off_y;
             // Guard statements about going out of bounds
-            if new_point.x < 0 || new_point.x >= pic.width as i32 {
+            if new_x < 0 || new_x >= pic.width as i32 {
                 continue;
             }
-            if new_point.y < 0 || new_point.y >= pic.height as i32 {
+            if new_y < 0 || new_y >= pic.height as i32 {
                 continue;
             }
+            // The point of the pixel surrounding it
+            let new_point = Point{x: new_x as i32, y: new_y as i32};
             // If the surrounding pixel has already been visited we don't care about it
             if visited[get_index(new_point, pic.width)] == true {
                 continue;
@@ -379,33 +383,13 @@ fn flood_fill(pic: &Picture, mut glyph: Glyph, visited: &mut Vec<bool>, pixel: P
     }
 }
 
-struct FSM {
-    current_state: usize,
-    states: Vec<State>,
-}
-
-#[derive(Debug)]
-struct State {
-    transitions: Vec<(usize, Transition)>
-}
-
-#[derive(Debug)]
-enum Transition {
-    MoveConsume(Point), // Move relative then consume
-    EpsilonMove(Point), // Move to a specific point relative to input and change states for free
-    Epsilon, // Change states for free
-}
-
-enum ConsumeType {
-    Output,
-    Input,
-    Function,
+struct FSM2 {
 }
 
 /// Creates the definition when the dir is identified and the picture definition is found
 /// You could identify it in bounding boxes to solve the infinitley expanding principle
 /// Link the bounding boxes together with their surrounding bounding boxes
-pub fn create_definition(mut func_box: Picture, inputs: Vec<Color>, outputs: Vec<Color>) {
+pub fn create_definition(func_box: Picture, inputs: Vec<Color>, outputs: Vec<Color>) {
     // Get the function color
     // If all the corners are the same color make the function color the corner color else blue
     let tl = func_box.pixels[get_index(Point {x: 0, y: 0}, func_box.width)];
@@ -423,88 +407,14 @@ pub fn create_definition(mut func_box: Picture, inputs: Vec<Color>, outputs: Vec
         func_box.pixels[get_index(Point {x: func_box.width -1, y: func_box.width - 1}, func_box.width)].color = WHITE;
     }
 
-    let mut important_colors = vec![func_color];
-    important_colors.append(&mut inputs.clone());
-    important_colors.append(&mut outputs.clone());
 
-    // If it's not in inputs, outputs, or the function color we don't care about it
-    for pixel in func_box.pixels.iter_mut() {
-        if !important_colors.contains(&pixel.color) {
-            pixel.color = WHITE;
-        }
+    let glyphs = gather_glyphs(&func_box, vec![]);
+    // Find the function color
+    for g in glyphs.iter() {
+        println!("{:?}", g);
     }
-
-    // Find the top left pixel, as that is the start point  
-    let mut min = Point{x: func_box.width, y: func_box.height};
-    for pixel in func_box.pixels.iter() {
-        if pixel.color == WHITE {
-            continue;
-        }
-        if pixel.point.x <= min.x && pixel.point.y <= min.y {
-            min = pixel.point;
-        }
-    }
-
-    // Start creating a FSM
-    let mut state_machine = FSM {
-        current_state: 0,
-        states: vec![],
-    };
-
-    // Initial state
-    state_machine.states.push(State{transitions: vec![]});
-    let mut head_pos = min;
-    
-    let list = follow(&func_box, &important_colors, head_pos, head_pos);
-    for (i, item) in list.iter().enumerate() {
-        println!("{} {:?}", i, item);
-    }
-}
-
-fn follow (func_box: &Picture, colors: &Vec<Color>, head_pos: Point, last_head_pos: Point,) -> Vec<State> {
-    // Get surrounding pixels that are important
-    let mut surrounding_pixels = vec![];
-    for pos in SURROUNDING {
-        if colors.contains(&func_box.pixels[get_index(head_pos + pos, func_box.width)].color) {
-            surrounding_pixels.push(pos);
-        }
-    }
-
-    // Base case, a color will always have 2 neighbors unless it is the start or end
-    let len_surround = surrounding_pixels.len();
-    if len_surround == 1 && head_pos != last_head_pos {
-        return vec![State{transitions: vec![]}]
-    }
-
-    let mut states = vec![State{transitions: vec![]}];
-    for pos in surrounding_pixels {
-        // Need to change this case for if the pixel has already been visited
-        // If it's the pixel from before, please don't follow it, it will overflow
-        if pos == last_head_pos - head_pos {
-            continue;
-        }
-
-        let mut rest_states = follow(func_box, colors, head_pos + pos, head_pos);
-
-        let len_addition = rest_states.len() - 1;
-        // Move all their indexes forward one because we are adding one to the beginning
-        for state in rest_states.iter_mut() {
-            for transition in state.transitions.iter_mut() {
-                transition.0 += 1;
-            }
-        }
-        states.append(&mut rest_states);
-
-        // The end root will be able to go back to root for free if it has multiple paths
-        let end_index = states.len() -1;
-        if len_surround > 2 {
-            states[end_index].transitions.push((0, Transition::EpsilonMove(head_pos)));
-        }
-
-        // Make sure to connect this node to beginning of the rest of the tree
-        states[0].transitions.push((end_index - len_addition, Transition::MoveConsume(pos)));
-    }
-    return states; 
+    // Find the function glyph
+    // Find all the inputs and outputs
 }
 
 /// Checks to see if a glyph fits the definition
