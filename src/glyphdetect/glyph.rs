@@ -391,15 +391,21 @@ struct State {
 
 #[derive(Debug)]
 enum Transition {
-    MoveConsume(Point), // Move relative then consume
+    MoveRelativeConsume(Point), // This is just moverelativestateconsume but the state is itself
+    MoveRelativeStateConsume(usize, Point), // Move relative to a point from that state then consume
     EpsilonMove(Point), // Move to a specific point relative to input and change states for free
     Epsilon, // Change states for free
+    CapturePixel, // Puts pixel into capture group
+    CaptureLen, // Just incremenets the capture group length
+    StartCapture(ConsumeType), // Starts a capture group
+    EndCapture, // Ends a capture group
 }
 
+#[derive(Debug)]
 enum ConsumeType {
-    Output,
-    Input,
-    Function,
+    Output, // Set of output colors
+    Input, // Set of input colors
+    Function, // Function color
 }
 
 /// Creates the definition when the dir is identified and the picture definition is found
@@ -455,13 +461,16 @@ pub fn create_definition(mut func_box: Picture, inputs: Vec<Color>, outputs: Vec
     state_machine.states.push(State{transitions: vec![]});
     let mut head_pos = min;
     
-    let list = follow(&func_box, &important_colors, head_pos, head_pos);
+    let mut visited = vec![false; (func_box.width * func_box.width) as usize];
+    visited[get_index(head_pos, func_box.width)] = true;
+    let list = follow(&func_box, &important_colors, head_pos, head_pos, &mut visited);
     for (i, item) in list.iter().enumerate() {
         println!("{} {:?}", i, item);
     }
+    println!("{:?}", visited);
 }
 
-fn follow (func_box: &Picture, colors: &Vec<Color>, head_pos: Point, last_head_pos: Point,) -> Vec<State> {
+fn follow (func_box: &Picture, colors: &Vec<Color>, head_pos: Point, last_head_pos: Point, visited: &mut Vec<bool>) -> Vec<State> {
     // Get surrounding pixels that are important
     let mut surrounding_pixels = vec![];
     for pos in SURROUNDING {
@@ -483,26 +492,38 @@ fn follow (func_box: &Picture, colors: &Vec<Color>, head_pos: Point, last_head_p
         if pos == last_head_pos - head_pos {
             continue;
         }
+        // If it's already been accounted for don't visit it again
+        if visited [get_index(head_pos + pos, func_box.width)] {
+            continue;
+        }
+        // If it hasn't been, then follow it and mark it as visited
+        visited[get_index(head_pos + pos, func_box.width)] = true;
+        let mut rest_states = follow(func_box, colors, head_pos + pos, head_pos, visited);
 
-        let mut rest_states = follow(func_box, colors, head_pos + pos, head_pos);
-
+        // Right here we will add what happens if it's an input, output, function, or black
+        //
         let len_addition = rest_states.len() - 1;
         // Move all their indexes forward one because we are adding one to the beginning
         for state in rest_states.iter_mut() {
             for transition in state.transitions.iter_mut() {
                 transition.0 += 1;
+                match transition.1 {
+                    Transition::MoveRelativeStateConsume(s, p) => transition.1 = Transition::MoveRelativeStateConsume(s + 1, p),
+                    _ => {}
+                }
             }
         }
         states.append(&mut rest_states);
 
         // The end root will be able to go back to root for free if it has multiple paths
         let end_index = states.len() -1;
+        // I could probably combine these two
         if len_surround > 2 {
-            states[end_index].transitions.push((0, Transition::EpsilonMove(head_pos)));
+            states[(end_index - len_addition) - 1].transitions.push((end_index - len_addition, Transition::MoveRelativeStateConsume(0, pos)));
         }
-
-        // Make sure to connect this node to beginning of the rest of the tree
-        states[0].transitions.push((end_index - len_addition, Transition::MoveConsume(pos)));
+        else {
+            states[(end_index - len_addition) - 1].transitions.push((end_index - len_addition, Transition::MoveRelativeConsume(pos)));
+        }
     }
     return states; 
 }
