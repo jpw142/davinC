@@ -256,13 +256,13 @@ pub fn load_builtin_definitions() -> Vec<Definition> {
 
 const SURROUNDING: [Point; 8] = [
     Point{x: 1, y: 0},
-    Point{x: 1, y: -1},
     Point{x:0, y: -1},
-    Point{x: -1, y: -1},
     Point{x: -1, y: 0},
-    Point{x: -1, y: 1},
     Point{x: 0, y: 1},
     Point{x: 1, y: 1},
+    Point{x: 1, y: -1},
+    Point{x: -1, y: -1},
+    Point{x: -1, y: 1},
 ];
 
 /// Gathers every group of connected pixels with the same colors
@@ -386,27 +386,52 @@ struct FSM {
 
 #[derive(Debug)]
 struct State {
-    transitions: Vec<(usize, Transition)>
+    t: Vec<(usize, Transition)>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum Transition {
-    MoveRelativeConsume(Point), // This is just moverelativestateconsume but the state is itself
-    MoveRelativeStateConsume(usize, Point), // Move relative to a point from that state then consume
-    EpsilonMove(Point), // Move to a specific point relative to input and change states for free
+    MoveRelativeState(usize, Point),
+    MoveRelativeStateConsume(usize, Point, ColorType), // Move relative to a point from that state then consume
     Epsilon, // Change states for free
-    CapturePixel, // Puts pixel into capture group
-    CaptureLen, // Just incremenets the capture group length
-    StartCapture(ConsumeType), // Starts a capture group
+    CaptureType(ColorType, u8),
     EndCapture, // Ends a capture group
 }
 
-#[derive(Debug)]
-enum ConsumeType {
-    Output, // Set of output colors
-    Input, // Set of input colors
+#[derive(Debug, Clone, Copy)]
+enum ColorType {
+    Output(Color), // Set of output colors
+    Input(Color), // Set of input colors
     Function, // Function color
+    Loop(u8),
 }
+
+/// A ledger for all the colors the FSM should worry about
+struct ColorLedger {
+    inputs: Vec<Color>,
+    outputs: Vec<Color>,
+    function: Color,
+}
+
+impl ColorLedger {
+    /// If the Ledger contains the color, it will return its domain
+    /// If it doesn't contain the color, it will return None
+    fn identify(&self, color: &Color) -> Option<ColorType> {
+        if self.inputs.contains(color) {
+            return Some(ColorType::Input(*color));
+        }
+        if self.outputs.contains(color) {
+            return Some(ColorType::Output(*color));
+        }
+        if &self.function == color {
+            return Some(ColorType::Function);
+        }
+        if (color.g == 0) && (color.b == 0) {
+            return Some(ColorType::Loop(color.r));
+        }
+        return None;
+    }
+} 
 
 /// Creates the definition when the dir is identified and the picture definition is found
 /// You could identify it in bounding boxes to solve the infinitley expanding principle
@@ -418,10 +443,13 @@ pub fn create_definition(mut func_box: Picture, inputs: Vec<Color>, outputs: Vec
     let tr = func_box.pixels[get_index(Point {x: func_box.width - 1, y: 0}, func_box.width)];
     let dl = func_box.pixels[get_index(Point {x: 0, y: func_box.height - 1}, func_box.width)];
     let dr = func_box.pixels[get_index(Point {x: func_box.width -1, y: func_box.width - 1}, func_box.width)];
-    
-    let mut func_color = BLUE;
+    let mut ledger = ColorLedger {
+        inputs,
+        outputs,
+        function: BLUE,
+    };
     if (tl.color == tr.color) && (tl.color == dl.color) && (tl.color == dr.color) {
-        func_color = tl.color;
+        ledger.function = tl.color;
         // Set them to white so they don't interfere with gather glyphs
         func_box.pixels[get_index(Point {x: 0, y: 0}, func_box.width)].color = WHITE;
         func_box.pixels[get_index(Point {x: func_box.width - 1, y: 0}, func_box.width)].color = WHITE;
@@ -429,13 +457,9 @@ pub fn create_definition(mut func_box: Picture, inputs: Vec<Color>, outputs: Vec
         func_box.pixels[get_index(Point {x: func_box.width -1, y: func_box.width - 1}, func_box.width)].color = WHITE;
     }
 
-    let mut important_colors = vec![func_color];
-    important_colors.append(&mut inputs.clone());
-    important_colors.append(&mut outputs.clone());
-
-    // If it's not in inputs, outputs, or the function color we don't care about it
+    // If it's not in inputs, outputs, black, or the function color we don't care about it
     for pixel in func_box.pixels.iter_mut() {
-        if !important_colors.contains(&pixel.color) {
+        if ledger.identify(&pixel.color).is_none() {
             pixel.color = WHITE;
         }
     }
@@ -458,72 +482,127 @@ pub fn create_definition(mut func_box: Picture, inputs: Vec<Color>, outputs: Vec
     };
 
     // Initial state
-    state_machine.states.push(State{transitions: vec![]});
-    let mut head_pos = min;
+    state_machine.states.push(State{t: vec![]});
+    let head_pos = min;
     
     let mut visited = vec![false; (func_box.width * func_box.width) as usize];
     visited[get_index(head_pos, func_box.width)] = true;
-    let list = follow(&func_box, &important_colors, head_pos, head_pos, &mut visited);
+    let list = follow(&func_box, &ledger, head_pos, head_pos, &mut visited);
     for (i, item) in list.iter().enumerate() {
         println!("{} {:?}", i, item);
     }
     println!("{:?}", visited);
 }
 
-fn follow (func_box: &Picture, colors: &Vec<Color>, head_pos: Point, last_head_pos: Point, visited: &mut Vec<bool>) -> Vec<State> {
-    // Get surrounding pixels that are important
+fn follow (func_box: &Picture, ledger: &ColorLedger, head_pos: Point, last_head_pos: Point, visited: &mut Vec<bool>) -> Vec<State> {
     let mut surrounding_pixels = vec![];
     for pos in SURROUNDING {
-        if colors.contains(&func_box.pixels[get_index(head_pos + pos, func_box.width)].color) {
+        let new_pos = head_pos + pos;
+        if new_pos.x.is_negative() || new_pos.y.is_negative() {
+            continue
+        }
+        if new_pos.x >= func_box.width || new_pos.y >= func_box.height {
+            continue
+        }
+        let temp_color = func_box.pixels[get_index(new_pos, func_box.width)].color;
+        if ledger.identify(&temp_color).is_some() {
             surrounding_pixels.push(pos);
         }
     }
 
-    // Base case, a color will always have 2 neighbors unless it is the start or end
     let len_surround = surrounding_pixels.len();
+    let last_type = ledger.identify(&func_box.pixels[get_index(last_head_pos, func_box.width)].color).unwrap();
+    let cur_type = ledger.identify(&func_box.pixels[get_index(head_pos, func_box.width)].color).unwrap();
+    // Base case: 
+    // A color will always have at least 2 neighbors unless it's at the end or beggining
+    // And at the beginning headpos = last_headpos
     if len_surround == 1 && head_pos != last_head_pos {
-        return vec![State{transitions: vec![]}]
+        match cur_type {
+            // If the current color is a loop we need a bit of special stuff before
+            // We need to initialize a capture, make the loop part, and end the capture
+            // And then we need the empty state at the end for the next recursion or as end state
+            ColorType::Loop(id) => {
+                match last_type {
+                    ColorType::Loop(_) => {return vec![State{t: vec![]}];}, // no need, will be handled by back one
+                    _ => {return vec![
+                        State{t: vec![(1, Transition::CaptureType(last_type, id))]},
+                        State{t: vec![(2, Transition::MoveRelativeStateConsume(1, head_pos - last_head_pos, last_type)), (2, Transition::Epsilon)]},
+                        State{t: vec![(1, Transition::Epsilon), (3, Transition::EndCapture)]},
+                        State{t: vec![]},
+
+                    ]}
+                }
+            }
+            _ => {return vec![State{t: vec![]}]} 
+        }
     }
-
-    let mut states = vec![State{transitions: vec![]}];
+    let mut states = vec![];
+    match cur_type {
+        // If the current color is a loop we need a bit of special stuff before
+        // We need to initialize a capture, make the loop part, and end the capture
+        // And then we need the empty state at the end for the next recursion or as end state
+        ColorType::Loop(id) => {
+            match last_type {
+                ColorType::Loop(_) => {states.push(State{t: vec![]});}, // no need, will be handled by back one
+                _ => {states.append(&mut vec![
+                    State{t: vec![(1, Transition::CaptureType(last_type, id))]},
+                    State{t: vec![(2, Transition::MoveRelativeStateConsume(1, head_pos - last_head_pos, last_type)), (2, Transition::Epsilon)]},
+                    State{t: vec![(1, Transition::Epsilon), (3, Transition::EndCapture)]},
+                    State{t: vec![]},
+                    
+                ])}
+            }
+        }
+        _ => {states.push(State{t: vec![]})} 
+    }
     for pos in surrounding_pixels {
-        // Need to change this case for if the pixel has already been visited
-        // If it's the pixel from before, please don't follow it, it will overflow
-        if pos == last_head_pos - head_pos {
-            continue;
-        }
+        let new_pos = head_pos + pos;
         // If it's already been accounted for don't visit it again
-        if visited [get_index(head_pos + pos, func_box.width)] {
+        if visited [get_index(new_pos, func_box.width)] {
             continue;
         }
-        // If it hasn't been, then follow it and mark it as visited
-        visited[get_index(head_pos + pos, func_box.width)] = true;
-        let mut rest_states = follow(func_box, colors, head_pos + pos, head_pos, visited);
 
-        // Right here we will add what happens if it's an input, output, function, or black
-        //
-        let len_addition = rest_states.len() - 1;
-        // Move all their indexes forward one because we are adding one to the beginning
+        // Since it hasn't been visited, then visit it
+        visited[get_index(new_pos, func_box.width)] = true;
+        let mut rest_states = follow(func_box, ledger, new_pos, head_pos, visited);
+
+        let len_rest = rest_states.len() - 1;
+        // Move all their indexes forward len(states) because we are adding states to the beginning
         for state in rest_states.iter_mut() {
-            for transition in state.transitions.iter_mut() {
-                transition.0 += 1;
+            for transition in state.t.iter_mut() {
+                transition.0 += states.len();
                 match transition.1 {
-                    Transition::MoveRelativeStateConsume(s, p) => transition.1 = Transition::MoveRelativeStateConsume(s + 1, p),
+                    Transition::MoveRelativeStateConsume(s, p, c) => transition.1 = Transition::MoveRelativeStateConsume(s + states.len(), p, c),
+                    Transition::MoveRelativeState(s, p) => transition.1 = Transition::MoveRelativeState(s + states.len(), p),
                     _ => {}
                 }
             }
         }
         states.append(&mut rest_states);
-
-        // The end root will be able to go back to root for free if it has multiple paths
-        let end_index = states.len() -1;
-        // I could probably combine these two
-        if len_surround > 2 {
-            states[(end_index - len_addition) - 1].transitions.push((end_index - len_addition, Transition::MoveRelativeStateConsume(0, pos)));
-        }
-        else {
-            states[(end_index - len_addition) - 1].transitions.push((end_index - len_addition, Transition::MoveRelativeConsume(pos)));
-        }
+        
+        let next_type = ledger.identify(&func_box.pixels[get_index(new_pos, func_box.width)].color).unwrap(); 
+        let end_index = states.len() - 1;
+        // The end of the states before appending new branch
+        let end_1 = end_index - len_rest - 1;
+        // The beginning of new states added 
+        let start_2 = end_index - len_rest;
+        // Combine end of root 1 to the beggining of root 2
+        let transition: Transition;
+        match next_type{
+            // If the next is a loop, it will handle consuming itself, and its first is capture
+            // And it relies that it is moving from this root node so... yea
+            ColorType::Loop(_) => {
+                // If right now is a loop, then just epsilon to that badboy
+                // Else it needs to do what is said above
+                match cur_type {
+                    ColorType::Loop(_) => {transition = Transition::Epsilon;},
+                    _ => {transition = Transition::MoveRelativeState(0, Point {x: 0, y: 0});}
+                }
+            },
+            _ => {transition = Transition::MoveRelativeStateConsume(0, pos, next_type)},
+        }; 
+        states[end_1].t.push((start_2, transition));
+            
     }
     return states; 
 }
