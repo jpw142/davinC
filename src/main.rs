@@ -7,7 +7,7 @@ use crate::glyphdetect::picture::*;
 fn main() {
     let path = "b.png";
     let image = open_pic(path);
-    create_definition(image, vec![], vec![]);
+    create_definition(image, vec![Color{r: 72, g: 0, b: 255}], vec![]);
 
   //  let mut colors_to_look_for: Vec<Color> = vec![
   //      Color{r: 255, b: 0, g:255}, // YELLOW -> Picture
