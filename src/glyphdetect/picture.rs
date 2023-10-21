@@ -1,15 +1,10 @@
 use image::io::Reader;
 use crate::glyphdetect::color::*;
 use crate::glyphdetect::point::*;
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub struct Pixel {
-    pub color: Color,
-    pub point: Point,
-}
 
 #[derive(Debug, Clone)]
 pub struct Picture {
-    pub pixels: Vec<Pixel>,
+    pub pixels: Vec<Color>,
     pub width: i32,
     pub height: i32,
 }
@@ -30,9 +25,8 @@ pub fn open_pic(path: &str) -> Picture {
 
     for c in 0..(height * width) {
         let c3 = (c * 3) as usize;
-        let point = get_pos(c as i32, width as i32);
         let color = Color { r: data[c3], g: data[c3 + 1], b: data[c3 + 2]}; 
-        ret_img.pixels.push(Pixel{color, point});
+        ret_img.pixels.push(color);
     }
     return ret_img;
 }
@@ -56,4 +50,14 @@ pub fn subpicture(pic: &Picture, bounds: BoundingBox) -> Picture {
     }
 }
 
-
+pub fn rotate(pic: Picture) -> Picture {
+    let n = pic.width;
+    let m = pic.height;
+    let mut new_picture = Picture{pixels: vec![WHITE; pic.pixels.len()], width: m, height: n};
+    for i in 0..n {
+        for j in 0..m {
+            new_picture.pixels[get_index(Point{x: j, y:n - i - 1}, new_picture.width)] = pic.pixels[get_index(Point { x: i, y: j}, pic.width)];
+        }
+    }
+    return new_picture;
+}
