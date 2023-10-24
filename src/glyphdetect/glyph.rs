@@ -35,17 +35,6 @@ impl Glyph {
     }
 }
 
-#[derive(Debug)]
-pub struct Identified{
-    glyph: Glyph,
-    pub identifier: Glyphies,
-    input: Vec<Color>,
-    output: Vec<Color>,
-    // flowin: i32
-    // flowout: i32
-    // These will be the id's in the identified vector of the flow
-}
-
 
 const SURROUNDING: [Point; 8] = [
     Point{x: 1, y: 0},
@@ -98,16 +87,17 @@ pub fn gather_glyphs(pic: &Picture, we_care: Vec<Color>) -> Vec<Glyph> {
             let mut min = Point{x: i32::MAX, y: i32::MAX};
             // Get the bounding box of the glyph (useful for other stuff)
             for pixel in glyph.pixels.iter() {
-                if pos.x >= max.x {
+                let ppos = pixel.0;
+                if ppos.x >= max.x {
                     max.x = pos.x;
                 }
-                if pos.y >= max.y {
+                if ppos.y >= max.y {
                     max.y = pos.y;
                 }
-                if pos.x <= min.x {
+                if ppos.x <= min.x {
                     min.x = pos.x;
                 }
-                if pos.y <= min.y {
+                if ppos.y <= min.y {
                     min.y = pos.y
                 }
             }
@@ -171,29 +161,6 @@ fn flood_fill(pic: &Picture, mut glyph: Glyph, visited: &mut Vec<bool>, pixel: P
     }
 }
 
-pub struct DefinitionLedger {
-    bif: Vec<Definition>, // builtin functions
-    cf: Vec<Definition>, // custom functions
-}
-
-/// A definition of a function
-#[derive(Debug, Clone)]
-pub struct Definition{
-    pub instructions: Vec<FSM>,
-    pub identifier: Glyphies,
-}
-
-/// Identifiers for definition glyphs, like a function name
-#[derive(Debug, Copy, Clone)]
-pub enum Glyphies {
-    Dir,
-    Add,
-    Mul,
-    Div,
-    Sub,
-    Assign,
-    CustomFunction(usize),
-}
 
 #[derive(Debug, Clone)]
 pub struct FSM {
@@ -246,7 +213,7 @@ pub fn create_definition(mut func_box: Picture, inputs: Vec<Color>, outputs: Vec
         }
     }
 
-    let mut definition = Definition{identifier: Glyphies::CustomFunction(0), instructions: vec![]};
+    let mut definition = Definition{identifier: GlyphType::CustomFunction(0), instructions: vec![]};
 
     for _ in 0..4 {
         // Find the top left pixel, as that is the start point  
@@ -389,19 +356,42 @@ fn follow (func_box: &Picture, ledger: &ColorLedger, head_pos: Point, last_head_
     return states; 
 }
 
-/// Checks to see if a glyph fits the definition
-/// Only checks against the pixels of the definition, not inputs or such
-pub fn identify(definition: &Definition, glyph: &Glyph, pic: &Picture) -> bool {
-    // Checks the glyph fitsx
-    // Checks the inputs fit
-    // Checks the outputs fit
-    // Checks that all the infinitley expandable things are equal where they need to be
-    todo!();
+impl FSM {
+    pub fn do_machine(&self, g: Glyph, p: Picture){
+    
+    }
 }
 
+/// A definition of a function
+#[derive(Debug, Clone)]
+pub struct Definition{
+    pub instructions: Vec<FSM>,
+    pub identifier: GlyphType,
+}
 
+#[derive(Debug, Clone)]
+pub struct Identified{
+    glyph: Glyph,
+    pub identifier: GlyphType,
+    input: Vec<Color>,
+    output: Vec<Color>,
+    // flowin: i32
+    // flowout: i32
+    // These will be the id's in the identified vector of the flow
+}
 
-
+/// Identifiers for definition glyphs, like a function name
+#[derive(Debug, Copy, Clone)]
+pub enum GlyphType {
+    Dir,
+    Add,
+    Mul,
+    Div,
+    Sub,
+    Assign,
+    Pic,
+    CustomFunction(usize),
+}
 
 const BUILTIN_FILE_NAMES: [&str; 4] = [
     "symbols/add.png",
@@ -410,3 +400,69 @@ const BUILTIN_FILE_NAMES: [&str; 4] = [
     "symbols/div.png",
 ];
 
+pub struct DefinitionLedger {
+    d: Vec<Definition>, 
+}
+
+impl DefinitionLedger {
+    /// Checks to see if a glyph fits the definition
+    pub fn identify(&self, glyph: &Glyph, pic: &Picture) -> Option<Identified> {
+
+        // up left of the glyph
+        let mut min = Point{x: i32::MAX, y: i32::MAX};
+        for (p, _) in glyph.pixels.iter() {
+            if p.x <= min.x && p.y <= min.y {
+                min = *p;
+            }
+        }
+        for definition in self.d.iter() {
+ 
+        }
+        // Checks the glyph fitsx
+        // Checks the inputs fit
+        // Checks the outputs fit
+        // Checks that all the infinitley expandable things are equal where they need to be
+        todo!();
+    }
+
+    pub fn load_pic_glyph(&mut self) {
+        let pic = open_pic("symbols/pic.png");
+        let mut definition = create_definition(pic, vec![], vec![]);
+        definition.identifier = GlyphType::Pic; 
+        self.d.push(definition);
+    }
+
+    pub fn load_dir(&mut self) {
+        let mut pic = open_pic("symbols/dir.png");
+        let glyphs = gather_glyphs(&pic, vec![Color{r: 255, g: 255, b: 0}]);
+        let mut innards = Picture{pixels: vec![], width: -1, height: -1};
+        for g in glyphs {
+            let i = self.identify(&g, &pic);
+            if i.is_some() {
+                let identified = i.unwrap();
+                match identified.identifier {
+                    GlyphType::Pic => {innards = isolate_pic_innards(identified, &mut pic);},
+                    _ => {}
+                }
+            }
+        }
+        let mut definition = create_definition(innards, vec![Color{r: 127, g: 201, b: 255}], vec![Color{r: 127, g: 255, b: 142}]);
+        definition.identifier = GlyphType::Dir;
+        self.d.push(definition);
+    }
+}
+
+/// Gets the contents of Picture Struct and returns them
+/// Sets them to White in the original Picture as to avoid any problems
+fn isolate_pic_innards(g: Identified, mut p: &mut Picture) -> Picture {
+    let mut new_picture = Picture{pixels: vec![], width: -1, height: -1};
+    new_picture.width = (g.glyph.b.l_right.x) - (g.glyph.b.u_left.x + 1);
+    new_picture.height = (g.glyph.b.l_right.y) - (g.glyph.b.u_left.y + 1);
+    for j in (g.glyph.b.u_left.y + 1)..=(g.glyph.b.l_right.y - 1) {
+        for i in (g.glyph.b.u_left.x + 1)..=(g.glyph.b.l_right.x - 1) {
+        new_picture.pixels.push(p.pixels[get_index(Point{x: i, y: j}, p.width)]);
+        }
+    }
+    println!{"{}, {}", new_picture.width, new_picture.height}
+    return new_picture;
+}
