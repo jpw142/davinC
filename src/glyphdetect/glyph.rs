@@ -233,6 +233,7 @@ pub fn create_definition(mut func_box: Picture, inputs: Vec<Color>, outputs: Vec
         let mut visited = vec![false; (func_box.width * func_box.width) as usize];
         visited[get_index(head_pos, func_box.width)] = true;
         let fsm = FSM{states: follow(&func_box, &ledger, head_pos, head_pos, &mut visited)};
+        // order them here
         definition.instructions.push(fsm);
         func_box = rotate(func_box);
     }
@@ -355,11 +356,111 @@ fn follow (func_box: &Picture, ledger: &ColorLedger, head_pos: Point, last_head_
     }
     return states; 
 }
+enum FSMError {
+   Missing, 
+}
 
 impl FSM {
     pub fn do_machine(&self, g: Glyph, p: Picture){
-    
+        // up left of the glyph
+        let mut min = Point{x: i32::MAX, y: i32::MAX};
+        for (p, _) in g.pixels.iter() {
+            if p.x <= min.x && p.y <= min.y {
+               min = *p;
+            }
+        }
+        let mut history = vec![];
+        let mut state_pos = vec![Point{x:0, y:0};self.states.len()];
+        let result = self.follow_machine(0, min, p, history, state_pos, vec![]);
+        // Still need to add headpos to it if it's a good result
     }
+
+    fn follow_machine(&self, cur_step: usize, cur_head: Point, mut p: Picture, mut history: Vec<(usize, Transition, usize)>, mut state_pos: Vec<Point>, mut capture: Vec<u8>) -> Result<FSMResult, FSMError> {
+        if self.states[cur_step].t.len() == 0 {
+            return Ok(FSMResult{func: vec![], inpt: vec![], outp: vec![]})
+        }
+        state_pos[cur_step] = cur_head;
+        let mut rest: Result<FSMResult, FSMError>;
+        let mut next_pos: Point;
+        for (i, transition) in self.states[cur_step].t.iter() {
+            let head_pos: Point;
+            match *transition {
+                Transition::MoveRelativeState(j, pos) => {
+                    // add to transition hisotry
+                    let mut my_history = history.clone();
+                    my_history.push((cur_step, *transition, *i));
+                    rest = self.follow_machine(
+                        *i, 
+                        state_pos[j] + pos, 
+                        p.clone(), 
+                        my_history, 
+                        state_pos.clone(), 
+                        capture.clone()
+                    );
+                },
+                Transition::MoveRelativeStateConsume(j, pos, c) => {
+                    // remove it from picture? and add this transiton to history
+                    let mut my_history = history.clone();
+                    my_history.push((cur_step, *transition, *i));
+                    rest = self.follow_machine(
+                        *i, 
+                        state_pos[j] + pos, 
+                        p.clone(), 
+                        my_history, 
+                        state_pos.clone(), 
+                        capture.clone()
+                    );
+                    // add to consume list
+                },
+                Transition::Epsilon => {
+                    // add transition to history
+                    let mut my_history = history.clone();
+                    my_history.push((cur_step, *transition, *i));
+                    rest = self.follow_machine(
+                        *i, 
+                        cur_head, 
+                        p.clone(), 
+                        my_history, 
+                        state_pos.clone(), 
+                        capture.clone()
+                        );
+                },
+                Transition::CaptureType(c, j) => {
+                    let mut my_history = history.clone();
+                    my_history.push((cur_step, *transition, *i));
+                    rest = self.follow_machine(
+                        *i, 
+                        cur_head, 
+                        p.clone(), 
+                        history.clone(), 
+                        state_pos.clone(),
+                        capture.clone()
+                        );
+                },
+                Transition::EndCapture => {
+                    let mut my_history = history.clone();
+                    my_history.push((cur_step, *transition, *i));
+                    rest = self.follow_machine(
+                        *i, 
+                        cur_head, 
+                        p.clone(), 
+                        history.clone(), 
+                        state_pos.clone(),
+                        capture.clone()
+                        );
+                },
+            }
+            
+        }
+        return Err(FSMError::Missing);
+
+    }
+}
+
+struct FSMResult {
+    func: Vec<(Point, Color)>,
+    inpt: Vec<(Point, Color)>,
+    outp: Vec<(Point, Color)>,
 }
 
 /// A definition of a function
@@ -412,7 +513,7 @@ impl DefinitionLedger {
         let mut min = Point{x: i32::MAX, y: i32::MAX};
         for (p, _) in glyph.pixels.iter() {
             if p.x <= min.x && p.y <= min.y {
-                min = *p;
+               min = *p;
             }
         }
         for definition in self.d.iter() {
