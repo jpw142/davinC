@@ -9,12 +9,23 @@ pub struct Color {
     pub b: u8,
 }
 
+impl Color {
+    pub fn from(r: u8, g: u8, b: u8) -> Self {
+        return Color{
+            r,
+            g,
+            b,
+        }
+    }
+}
+
 // Common color constants used throughout the program
 pub const RED: Color = Color{r: 255, g: 0, b: 0};
 pub const GREEN: Color = Color{r: 0, g: 255, b: 0};
 pub const BLUE: Color = Color{r: 0, g: 0, b: 255};
 pub const YELLOW: Color = Color{r: 255, g: 255, b: 0};
 pub const WHITE: Color = Color{r: 255, g: 255, b: 255};
+pub const BLACK: Color = Color{r: 0, g: 0, b: 0};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ColorType {
@@ -25,6 +36,7 @@ pub enum ColorType {
 }
 
 /// A ledger for all the colors the FSM should worry about
+#[derive(Debug, Clone)]
 pub struct ColorLedger {
     pub inputs: Vec<Color>,
     pub outputs: Vec<Color>,

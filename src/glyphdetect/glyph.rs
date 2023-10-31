@@ -29,7 +29,7 @@ pub struct Glyph {
 impl Glyph {
     fn zero() -> Self {
         Glyph{
-            color: Color{r: 0, g: 0, b: 0},
+            color: BLACK,
             pixels: vec![],
             b: BoundingBox { u_left: Point::zero(), l_right: Point::zero()}
         }
@@ -51,7 +51,7 @@ pub const SURROUNDING: [Point; 8] = [
 /// Only gathers groups of colors we care about
 /// If the vec of colors we care about is empty, collect every pixel that has a value other than
 /// white
-pub fn gather_glyphs(pic: &Picture, we_care: Vec<Color>) -> Vec<Glyph> {
+pub fn gather_glyphs(pic: &Picture, ledger: ColorLedger) -> Vec<Glyph> {
     let mut glyph_list = vec![];
 
     // Creates a list to see if we have visited each pixel
@@ -61,23 +61,12 @@ pub fn gather_glyphs(pic: &Picture, we_care: Vec<Color>) -> Vec<Glyph> {
     for (index, pixel) in pic.pixels.iter().enumerate() {
         // This is if the pixel is in our we_care color list
         let pos = get_pos(index as i32, pic.width);
-        let mut is_pixel_important = false;
 
-        for important_color in we_care.iter() {
-            if important_color == pixel {
-                is_pixel_important = true;
-            }
-        }
-        // If the pixel isn't important we do NOT CARE, but if there is no way it could be
-        // important, then we have to give it a chance :3
-        if !is_pixel_important && we_care.len() != 0 {
-            continue;
+        // If the pixel isn't important we do NOT CARE
+        if ledger.identify(pixel).is_none() {
+            continue
         }
     
-        if pixel == &WHITE {
-            continue;
-        }
-
         // If a pixel hasn't already been visited by the flood fill algorithm we will fill it
         // But if it has it would only lead to duplications
         if !visited[index] {
