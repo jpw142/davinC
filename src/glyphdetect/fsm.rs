@@ -279,15 +279,24 @@ impl DefinitionLedger {
                min = *p;
             }
         }
-        for definition in self.d.iter() {
-            definition.instructions.iter().for_each(|f| {
+        let mut fsm: Result<FSMResult, FSMError>;
+        let mut id: GlyphType;
+        'outer: for definition in self.d.iter() {
+            for f in definition.instructions {
                 println!("{:?}", f.do_machine(glyph.clone(), pic.clone()));
                 let result = f.do_machine(glyph.clone(), pic.clone());
+                fsm = result; 
+                id = definition.identifier; 
                 match result {
-                    Ok(o) => {},
-                    Err(_) => {}
+                    Ok(o) => {break 'outer},
+                    Err(_) => {continue}
                 }
-            });
+            }
+        }
+        let ok_fsm: FSM;
+        match fsm {
+            Ok(o) => {ok_fsm = o},
+            Err(_) => {return None},
         }
         
         // Checks the glyph fitsx
