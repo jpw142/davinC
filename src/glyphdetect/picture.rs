@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use image::io::Reader;
 use crate::glyphdetect::color::*;
 use crate::glyphdetect::point::*;
@@ -50,6 +51,7 @@ pub fn subpicture(pic: &Picture, bounds: BoundingBox) -> Picture {
     }
 }
 
+/// Rotates a picture 90 degrees, left or right i do not know
 pub fn rotate(pic: Picture) -> Picture {
     let n = pic.width;
     let m = pic.height;
