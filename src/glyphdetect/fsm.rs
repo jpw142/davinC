@@ -210,7 +210,7 @@ impl FSM {
 /// I need TODO, add what corresponding input color/output color they are
 /// Like if a function takes blue and green and you input red and orange it should designate 
 /// red -> blue and orange -> green
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FSMResult {
     func: Vec<(Point, Color)>,
     inpt: Vec<(Point, Color)>,
@@ -250,104 +250,6 @@ const BUILTIN_FILE_NAMES: [&str; 4] = [
 pub struct Definition{
     pub instructions: Vec<FSM>,
     pub identifier: GlyphType,
-}
-
-#[derive(Debug, Clone)]
-pub struct Identified{
-    glyph: Glyph,
-    pub identifier: GlyphType,
-    input: Vec<Color>,
-    output: Vec<Color>,
-    // flowin: i32
-    // flowout: i32
-    // These will be the id's in the identified vector of the flow
-}
-
-/// Contains every single function definition for a program
-pub struct DefinitionLedger {
-    d: Vec<Definition>, 
-}
-
-impl DefinitionLedger {
-    /// Checks to see if a glyph fits any definition
-    pub fn identify(&self, glyph: &Glyph, pic: &Picture) -> Option<Identified> {
-
-        // up left of the glyph
-        let mut min = Point{x: i32::MAX, y: i32::MAX};
-        for (p, _) in glyph.pixels.iter() {
-            if p.x <= min.x && p.y <= min.y {
-               min = *p;
-            }
-        }
-        let mut fsm: Result<FSMResult, FSMError>;
-        let mut id: GlyphType;
-        'outer: for definition in self.d.iter() {
-            for f in definition.instructions {
-                println!("{:?}", f.do_machine(glyph.clone(), pic.clone()));
-                let result = f.do_machine(glyph.clone(), pic.clone());
-                fsm = result; 
-                id = definition.identifier; 
-                match result {
-                    Ok(o) => {break 'outer},
-                    Err(_) => {continue}
-                }
-            }
-        }
-        let ok_fsm: FSM;
-        match fsm {
-            Ok(o) => {ok_fsm = o},
-            Err(_) => {return None},
-        }
-        
-        // Checks the glyph fitsx
-        // Checks the inputs fit
-        // Checks the outputs fit
-        // Checks that all the infinitley expandable things are equal where they need to be
-        todo!();
-    }
-
-    /// Loads in the builtin function pic
-    pub fn load_pic_glyph(&mut self) {
-        let pic = open_pic("symbols/pic.png");
-        let mut definition = create_definition(pic, vec![], vec![]);
-        definition.identifier = GlyphType::Pic; 
-        self.d.push(definition);
-    }
-
-    /// Loads in the builtin function dir
-    pub fn load_dir(&mut self) {
-        let mut pic = open_pic("symbols/dir.png");
-        let glyphs = gather_glyphs(&pic, vec![Color{r: 255, g: 255, b: 0}]);
-        let mut innards = Picture{pixels: vec![], width: -1, height: -1};
-        for g in glyphs {
-            let i = self.identify(&g, &pic);
-            if i.is_some() {
-                let identified = i.unwrap();
-                match identified.identifier {
-                    GlyphType::Pic => {innards = isolate_pic_innards(identified, &mut pic);},
-                    _ => {}
-                }
-            }
-        }
-        let mut definition = create_definition(innards, vec![Color{r: 127, g: 201, b: 255}], vec![Color{r: 127, g: 255, b: 142}]);
-        definition.identifier = GlyphType::Dir;
-        self.d.push(definition);
-    }
-}
-/// An abstract object that contains transitions to other indexes in its parent structure FSM
-#[derive(Debug, Clone)]
-pub struct State {
-    pub t: Vec<(usize, Transition)>
-}
-
-/// The different transitions between states that are possible
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Transition {
-    MoveRelativeState(usize, Point), // Moves relative to a state
-    MoveRelativeStateConsume(usize, Point, ColorType), // Move relative to a point from that state then consume
-    Epsilon, // Change states for free
-    CaptureType(ColorType, u8), // Starts a length capture group
-    EndCapture, // Ends a capture group
 }
 
 
@@ -527,6 +429,103 @@ fn follow (func_box: &Picture, ledger: &ColorLedger, head_pos: Point, last_head_
     }
     return states; 
 }
+
+#[derive(Debug, Clone)]
+pub struct Identified{
+    glyph: Glyph,
+    pub identifier: GlyphType,
+    input: Vec<Color>,
+    output: Vec<Color>,
+    // flowin: i32
+    // flowout: i32
+    // These will be the id's in the dentified vector of the flow
+}
+
+/// Contains every single function definition for a program
+pub struct DefinitionLedger {
+    d: Vec<Definition>, 
+}
+
+impl DefinitionLedger {
+    /// Checks to see if a glyph fits any definition
+    pub fn identify(&self, glyph: &Glyph, pic: &Picture) -> Option<Identified> {
+
+        // up left of the glyph
+        let mut min = Point{x: i32::MAX, y: i32::MAX};
+        for (p, _) in glyph.pixels.iter() {
+            if p.x <= min.x && p.y <= min.y {
+               min = *p;
+            }
+        }
+        let mut result: Result<FSMResult, FSMError> = Err(FSMError::Missing);
+        let mut id: GlyphType;
+        'outer: for definition in self.d.iter() {
+            for f in definition.instructions.iter() {
+                println!("{:?}", f.do_machine(glyph.clone(), pic.clone()));
+                result = f.do_machine(glyph.clone(), pic.clone());
+                id = definition.identifier; 
+                match result {
+                    Ok(o) => {break 'outer},
+                    Err(_) => {continue}
+                }
+            }
+        }
+        let ok_fsm: FSMResult;
+        match result {
+            Ok(o) => {ok_fsm = o.clone()},
+            Err(_) => {return None},
+        }        
+        // Checks the glyph fitsx
+        // Checks the inputs fit
+        // Checks the outputs fit
+        // Checks that all the infinitley expandable things are equal where they need to be
+        todo!();
+    }
+
+    /// Loads in the builtin function pic
+    pub fn load_pic_glyph(&mut self) {
+        let pic = open_pic("symbols/pic.png");
+        let mut definition = create_definition(pic, vec![], vec![]);
+        definition.identifier = GlyphType::Pic; 
+        self.d.push(definition);
+    }
+
+    /// Loads in the builtin function dir
+    pub fn load_dir(&mut self) {
+        let mut pic = open_pic("symbols/dir.png");
+        let glyphs = gather_glyphs(&pic, vec![Color{r: 255, g: 255, b: 0}]);
+        let mut innards = Picture{pixels: vec![], width: -1, height: -1};
+        for g in glyphs {
+            let i = self.identify(&g, &pic);
+            if i.is_some() {
+                let identified = i.unwrap();
+                match identified.identifier {
+                    GlyphType::Pic => {innards = isolate_pic_innards(identified, &mut pic);},
+                    _ => {}
+                }
+            }
+        }
+        let mut definition = create_definition(innards, vec![Color{r: 127, g: 201, b: 255}], vec![Color{r: 127, g: 255, b: 142}]);
+        definition.identifier = GlyphType::Dir;
+        self.d.push(definition);
+    }
+}
+/// An abstract object that contains transitions to other indexes in its parent structure FSM
+#[derive(Debug, Clone)]
+pub struct State {
+    pub t: Vec<(usize, Transition)>
+}
+
+/// The different transitions between states that are possible
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Transition {
+    MoveRelativeState(usize, Point), // Moves relative to a state
+    MoveRelativeStateConsume(usize, Point, ColorType), // Move relative to a point from that state then consume
+    Epsilon, // Change states for free
+    CaptureType(ColorType, u8), // Starts a length capture group
+    EndCapture, // Ends a capture group
+}
+
 /// Gets the contents of Picture Struct and returns them
 /// Sets them to White in the original Picture as to avoid any problems with things
 fn isolate_pic_innards(g: Identified, p: &mut Picture) -> Picture {

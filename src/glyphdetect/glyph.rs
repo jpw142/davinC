@@ -2,7 +2,6 @@
 use crate::glyphdetect::picture::*;
 use crate::glyphdetect::point::*;
 use crate::glyphdetect::color::*;
-use crate::glyphdetect::fsm::*;
 // To get all my functions:
 // Find all my dirs
 // Parse the function for its symbol and its inputs
